@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import os
+from typing import List
 
 from xml_parser import OutputParser
 
@@ -23,7 +24,7 @@ class NmapRunner:
     def scan(
             self,
             *,
-            hosts: str,
+            hosts: List[str],
             sudo: bool = True,
             flags: str,
             ports: str
@@ -34,7 +35,8 @@ class NmapRunner:
         command.extend(flags)
         if command[-1] == "-p":
             command.append(ports)
-        command.append(hosts)
+        command.extend(hosts)
+        print(f"Executing '{command}'...")
         completed = subprocess.run(
             command,
             capture_output=True,

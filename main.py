@@ -14,9 +14,9 @@ from nmap_runner import NmapRunner
 
 def get_targets(target_list: List[str], cli_args: argparse.Namespace) -> str:
     if target_list[0].endswith(".txt"):
-        return "-iL " + list[0]
+        return ["-iL", target_list[0]]
     else:
-        return '.'.join(target_list)
+        return [','.join(target_list)]
 
 if __name__ == "__main__":
     console = Console()
