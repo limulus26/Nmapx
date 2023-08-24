@@ -1,6 +1,5 @@
 from rich.table import Table
 from typing import Any
-from xml_parser import NISTHTML
 
 def create_scan_table(*, cli: str) -> Table:
     """

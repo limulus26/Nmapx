@@ -1,7 +1,7 @@
 import shutil
 import subprocess
 import os
-from typing import List
+from typing import Any, List
 
 from xml_parser import OutputParser
 
@@ -24,18 +24,24 @@ class NmapRunner:
     def scan(
             self,
             *,
-            hosts: List[str],
+            host: str,
             sudo: bool = True,
-            flags: str,
+            scan: dict[str, Any],
+            host_path: str,
             ports: str
     ):
         command = ["nmap"]
         if sudo:
             command.insert(0, self.sudo)
-        command.extend(flags)
+        command.extend(["-oA", host_path])
+        command.extend(scan['flags'])
         if command[-1] == "-p":
-            command.append(ports)
-        command.extend(hosts)
+            if not len(ports) == 0:
+                command.append(ports)
+            else:
+                print("No ports discovered. Skipping service scan...")
+                return 
+        command.append(host)
         print(f"Executing '{command}'...")
         completed = subprocess.run(
             command,
