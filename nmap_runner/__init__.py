@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import os
+import time
 from typing import Any, List
 
 from xml_parser import OutputParser
@@ -25,14 +26,13 @@ class NmapRunner:
             self,
             *,
             host: str,
-            sudo: bool = True,
+            sudo: str,
             scan: dict[str, Any],
             host_path: str,
-            ports: str
+            ports: str,
     ):
         command = ["nmap"]
-        if sudo:
-            command.insert(0, self.sudo)
+        
         command.extend(["-oA", host_path])
         command.extend(scan['flags'])
         if command[-1] == "-p":
@@ -42,13 +42,31 @@ class NmapRunner:
                 print("No ports discovered. Skipping service scan...")
                 return 
         command.append(host)
+        if sudo:
+            sudoCommand = "sudo -S"
+            command = sudoCommand.split() + command
+            sudo_password = bytes(sudo, 'utf-8')
         print(f"Executing '{command}'...")
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            shell=False,
-            check=True
-        )
-        completed.check_returncode()
-        # args, data = OutputParser.parse_nmap_xml(completed.stdout.decode('utf-8'))
-        return completed.stderr
+        try:
+            completed = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            start_time = time.time()
+            timeout = 300
+            completed.stdin.write(sudo_password)
+            completed.stdin.close()
+            while completed.poll() is None:
+                elapsed_time = time.time() - start_time
+                print(f"\r[{float(elapsed_time):.2f}/300s]", end="")
+                time.sleep(0.1)
+                if elapsed_time >= timeout:
+                    completed.kill()
+                    raise subprocess.TimeoutExpired
+            
+        except subprocess.TimeoutExpired:
+            print("Scan took longer than 5 minutes. Something's probably stuck. Skipping...")
+
+        return 'Standard error placeholder.'

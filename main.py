@@ -9,6 +9,7 @@ from rich.console import Console
 from xml_parser import OutputParser
 from scan_ui import fill_simple_table
 from nmap_runner import NmapRunner
+from xml.etree.ElementTree import ParseError
 
 
 
@@ -43,6 +44,12 @@ if __name__ == "__main__":
               f"Defaults to <date>_<time>/."),
         required=False
     )
+    arg_parser.add_argument(
+        '--rescan',
+        action='store',
+        help=(f'Force Nmapx to rescan targets even if it finds existing scan logs.'),
+        required=False
+    )
     # arg_parser.add_argument(
     #     '-s',
     #     '--scans',
@@ -56,26 +63,30 @@ if __name__ == "__main__":
 
     discovered_ports = []
     scans = [
-        {'name': '1.0_discovery_scan',
-         'flags': ["-Pn", "-T4", "--top-ports", "1000", "--open"]},
-        {'name': '2.0_script_scan',
-         'flags': ["-sCV","-Pn", "-T4", "-p"]},
-        {'name': '3.0_quick_udp_scan',
-         'flags': ["-sU", "-Pn", "-T4", "--top-ports", "100"]},
+        # {'name': '0.0_host_scan',
+        #  'flags': ["-T4", "--open"]}
+        # {'name': '1.0_discovery_scan',
+        #  'flags': [, "-T4", "--top-ports", "1000", "--open"]},
+        # {'name': '2.0_script_scan',
+        #  'flags': ["-sCV", "-T4", "-p"]},
+        # {'name': '3.0_quick_udp_scan',
+        #  'flags': ["-sU", "-T4", "--top-ports", "100"]},
         {'name': '4.0_full_tcp_scan',
-         'flags': ["-sT", "-Pn", "-T4", "-p-", "--open"]},
+         'flags': ["-sT", "-T4", "-p-", "--open"]},
         {'name': '5.0_source_port_scan',
-         'flags': ["-g", "53","-Pn", "-T4", "-p-", "--open"]},
+         'flags': ["-g", "53", "-T4", "-p-", "--open"]},
         {'name': '6.0_IPv6_scan',
-         'flags': ["-6","-Pn", "-T4", "-p-", "--open"]},
+         'flags': ["-6", "-T4", "-p-", "--open"]},
         {'name': '7.0_full_udp_scan',
-         'flags': ["-sU", "-Pn", "-T4", "-p-", "--open"]},
+         'flags': ["-sU", "-T4", "-p-", "--open"]},
         {'name': '8.0_full_tcp_service_scan',
-         'flags': ["-sCV","-Pn", "-T4", "-p-", "--open"]},
+         'flags': ["-sCV", "-T4", "-p-", "--open"]},
         {'name': '9.0_full_udp_service_scan',
-         'flags': ["-sUCV", "-Pn", "-T4", "-p-", "--open"]},
+         'flags': ["-sUCV", "-T4", "-p-", "--open"]},
         {'name': '10.0_closed_ports_scan',
-         'flags': ["-dd", "-Pn", "T4", "-p-"]}
+         'flags': ["-dd", "T4", "-p-"]},
+        {'name': '11.0_dead_tcp_scan',
+         'flags': ["-sT", "-T4", "-p-", "--open"]}
     ]
 
     if not os.path.exists('results'):
@@ -92,6 +103,7 @@ if __name__ == "__main__":
         os.mkdir(results_path)
 
     try:
+        sudo_password = input('Enter sudo password: ')
         scanner = NmapRunner()
         scan_targets = get_targets(args.targets, args)
         for scan in scans:
@@ -104,19 +116,26 @@ if __name__ == "__main__":
                 ports_list = ','.join(set(discovered_ports))
                 host_path = scan_path + "/" + host
             
-                stderr = scanner.scan(host=host, scan=scan, host_path=host_path, ports=ports_list)
+                # Check if host has been scanned before
+                if not os.path.exists(host_path + ".xml") or args.rescan:
+                    stderr = scanner.scan(host=host, scan=scan, host_path=host_path, ports=ports_list, sudo=sudo_password)
 
                 if os.path.exists(host_path + ".xml"):
                     with open(host_path + ".xml", 'r') as xml:
                         xml_data = xml.read()
-                        rundata, parsed = OutputParser.parse_nmap_xml(xml_data)
-                        nmap_table = fill_simple_table(exec_data=rundata, parsed_xml=parsed)
-                        console.print(nmap_table)
-                        for entry in parsed:
-                            for port in entry['ports']:
-                                discovered_ports.append(port['port_id'])
+                        try:
+                            rundata, parsed = OutputParser.parse_nmap_xml(xml_data)
+                            nmap_table = fill_simple_table(exec_data=rundata, parsed_xml=parsed)
+                            console.print(nmap_table)
+                            for entry in parsed:
+                                for port in entry['ports']:
+                                    discovered_ports.append(port['port_id'])
+                        except ParseError:
+                            console.log(f'XML file for {host} found but was empty. Scan was most likely interrupted.')
+                        except Exception as e:
+                            console.log(f'XML file for {host} found but {e}')
                 else:
-                    console.log('XML file not found! Something went wrong with the scan output')
+                    console.log(f'XML file for {host} not found! Something went wrong with the scan output')
     except ValueError:
         logging.exception("There was an error")
         sys.exit(100)

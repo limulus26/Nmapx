@@ -21,6 +21,11 @@ class OutputParser:
         parsed_data = []
         root = ElementTree.fromstring(xml)
         nmap_args = root.attrib['args']
+
+        status = root.find('runstats/hosts')
+        if status.attrib['down'] == "1":
+            raise Exception('host appears to be down.')
+
         for host in root.findall('host'):
             for address in host.findall('address'):
                 curr_address = address.attrib['addr']
