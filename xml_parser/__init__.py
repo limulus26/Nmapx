@@ -36,7 +36,7 @@ class OutputParser:
                 states = host.findall('ports/port/state')
                 ports = host.findall('ports/port')
                 for i in range(len(ports)):
-                    if states[i].attrib['state'] == 'closed' or states[i].attrib['state'] == 'filtered':
+                    if states[i].attrib['state'] == 'closed' or 'filtered' in states[i].attrib['state']:
                         continue  # Skip closed ports
                     port_id = ports[i].attrib['portid']
                     protocol = ports[i].attrib['protocol']

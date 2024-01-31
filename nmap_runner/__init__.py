@@ -30,6 +30,7 @@ class NmapRunner:
             scan: dict[str, Any],
             host_path: str,
             ports: str,
+            timeout: int
     ):
         command = ["nmap"]
         
@@ -46,7 +47,7 @@ class NmapRunner:
             sudoCommand = "sudo -S"
             command = sudoCommand.split() + command
             sudo_password = bytes(sudo, 'utf-8')
-        print(f"Executing '{command}'...")
+        print(f"Executing '{' '.join(command)}'...")
         try:
             completed = subprocess.Popen(
                 command,
@@ -55,18 +56,21 @@ class NmapRunner:
                 stderr=subprocess.PIPE,
             )
             start_time = time.time()
-            timeout = 300
             completed.stdin.write(sudo_password)
             completed.stdin.close()
             while completed.poll() is None:
                 elapsed_time = time.time() - start_time
-                print(f"\r[{float(elapsed_time):.2f}/300s]", end="")
+                print(f"\r[{float(elapsed_time):.2f}/{timeout}s]", end="")
                 time.sleep(0.1)
                 if elapsed_time >= timeout:
                     completed.kill()
-                    raise subprocess.TimeoutExpired
-            
-        except subprocess.TimeoutExpired:
-            print("Scan took longer than 5 minutes. Something's probably stuck. Skipping...")
+                    raise Exception("Scan took longer than 5 minutes. Something's probably stuck. Skipping...")   
+                time.sleep(1)
+        except KeyboardInterrupt as e:
+            raise KeyboardInterrupt
+        except Exception as e:
+            print(e)
+        except:
+            print("An unknown error occurred.")
 
         return 'Standard error placeholder.'

@@ -21,7 +21,7 @@ def get_targets(targets: str, cli_args: argparse.Namespace):
         return targets[0].split(",")
 
 if __name__ == "__main__":
-    console = Console()
+    
     arg_parser = argparse.ArgumentParser(
         description="Run all your nmap scans, display nicely, and output all fieldwork files",
         prog=__file__
@@ -46,9 +46,16 @@ if __name__ == "__main__":
     )
     arg_parser.add_argument(
         '--rescan',
-        action='store',
+        action='store_true',
         help=(f'Force Nmapx to rescan targets even if it finds existing scan logs.'),
         required=False
+    )
+    arg_parser.add_argument(
+        '-m',
+        '--timeout',
+        action='store',
+        help=(f"Set the timeout for scans."),
+        default=600
     )
     # arg_parser.add_argument(
     #     '-s',
@@ -63,14 +70,14 @@ if __name__ == "__main__":
 
     discovered_ports = []
     scans = [
-        # {'name': '0.0_host_scan',
-        #  'flags': ["-T4", "--open"]}
-        # {'name': '1.0_discovery_scan',
-        #  'flags': [, "-T4", "--top-ports", "1000", "--open"]},
-        # {'name': '2.0_script_scan',
-        #  'flags': ["-sCV", "-T4", "-p"]},
-        # {'name': '3.0_quick_udp_scan',
-        #  'flags': ["-sU", "-T4", "--top-ports", "100"]},
+        {'name': '0.0_host_scan',
+         'flags': ["-T4", "-sP"]},
+        {'name': '1.0_discovery_scan',
+         'flags': ["-T4", "--top-ports", "1000", "--open"]},
+        {'name': '2.0_script_scan',
+         'flags': ["-sCV", "-T4", "-p"]},
+        {'name': '3.0_quick_udp_scan',
+         'flags': ["-sU", "-T4", "--top-ports", "100"]},
         {'name': '4.0_full_tcp_scan',
          'flags': ["-sT", "-T4", "-p-", "--open"]},
         {'name': '5.0_source_port_scan',
@@ -86,60 +93,74 @@ if __name__ == "__main__":
         {'name': '10.0_closed_ports_scan',
          'flags': ["-dd", "T4", "-p-"]},
         {'name': '11.0_dead_tcp_scan',
-         'flags': ["-sT", "-T4", "-p-", "--open"]}
+         'flags': ["-sT", "-T4", "-p-", "--open", "-Pn"]}
     ]
 
     if not os.path.exists('results'):
             os.mkdir('results')
 
     if args.output:
-        results_path = 'results/' + args.output[0]
+        results_path = os.path.join('results/', args.output[0])
     else:
-        console.log("No output directory defined, defaulting to datetime for directory...")
-        results_path = 'results/' + str(datetime.datetime.now())
+        print("No output directory defined, defaulting to datetime for directory...")
+        results_path = os.path.join('results/', str(datetime.datetime.now()))
+
+    results_file = os.path.join(results_path, 'results_tables')
 
     if not os.path.exists(results_path):
-        console.log("Directory does not exist yet. Creating...")
+        print("Directory does not exist yet. Creating...")
         os.mkdir(results_path)
 
-    try:
-        sudo_password = input('Enter sudo password: ')
-        scanner = NmapRunner()
-        scan_targets = get_targets(args.targets, args)
-        for scan in scans:
-            console.log(f"Initialising {scan['name']}...")
-            scan_path = results_path + "/" + scan['name']
-            if not os.path.exists(scan_path):
-                os.mkdir(scan_path)
+    if os.path.exists(results_file) and args.rescan:
+        answer = input('Results file found. It will be overwritten. Ok? (y/n): ')
+        match answer:
+            case 'y':
+                os.remove(results_file)
+            case _:
+                print("Uhh ok, I'm exiting.")
+                sys.exit(0)
 
-            for host in scan_targets:
-                ports_list = ','.join(set(discovered_ports))
-                host_path = scan_path + "/" + host
-            
-                # Check if host has been scanned before
-                if not os.path.exists(host_path + ".xml") or args.rescan:
-                    stderr = scanner.scan(host=host, scan=scan, host_path=host_path, ports=ports_list, sudo=sudo_password)
+    with open(results_file, 'a') as f:
+        console = Console(record=True, force_terminal=True)
+        try:
+            sudo_password = input('Enter sudo password: ')
+            scanner = NmapRunner()
+            scan_targets = get_targets(args.targets, args)
+            for scan in scans:
+                console.log(f"Initialising {scan['name']}...")
+                scan_path = results_path + "/" + scan['name']
+                if not os.path.exists(scan_path):
+                    os.mkdir(scan_path)
 
-                if os.path.exists(host_path + ".xml"):
-                    with open(host_path + ".xml", 'r') as xml:
-                        xml_data = xml.read()
-                        try:
-                            rundata, parsed = OutputParser.parse_nmap_xml(xml_data)
-                            nmap_table = fill_simple_table(exec_data=rundata, parsed_xml=parsed)
-                            console.print(nmap_table)
-                            for entry in parsed:
-                                for port in entry['ports']:
-                                    discovered_ports.append(port['port_id'])
-                        except ParseError:
-                            console.log(f'XML file for {host} found but was empty. Scan was most likely interrupted.')
-                        except Exception as e:
-                            console.log(f'XML file for {host} found but {e}')
-                else:
-                    console.log(f'XML file for {host} not found! Something went wrong with the scan output')
-    except ValueError:
-        logging.exception("There was an error")
-        sys.exit(100)
-    except KeyboardInterrupt:
-        console.log("Scan interrupted, exiting...")
-        pass
+                for host in scan_targets:
+                    ports_list = ','.join(set(discovered_ports))
+                    host_path = scan_path + "/" + host
+                
+                    # Check if host has been scanned before
+                    if not os.path.exists(host_path + ".xml") or args.rescan:
+                        stderr = scanner.scan(host=host, scan=scan, host_path=host_path, ports=ports_list, sudo=sudo_password, timeout=args.timeout)
+
+                    if os.path.exists(host_path + ".xml"):
+                        with open(host_path + ".xml", 'r') as xml:
+                            xml_data = xml.read()
+                            try:
+                                rundata, parsed = OutputParser.parse_nmap_xml(xml_data)
+                                nmap_table = fill_simple_table(exec_data=rundata, parsed_xml=parsed)
+                                console.print(nmap_table)
+                                for entry in parsed:
+                                    for port in entry['ports']:
+                                        discovered_ports.append(port['port_id'])
+                            except ParseError:
+                                console.log(f'XML file for {host} found but was empty. Scan was most likely interrupted.')
+                            except Exception as e:
+                                console.log(f'XML file for {host} found but {e}')
+                    else:
+                        console.log(f'XML file for {host} not found! Something went wrong with the scan output')
+        except ValueError:
+            logging.exception("There was an error") 
+            sys.exit(100)
+        except KeyboardInterrupt:
+            console.log("Scan interrupted, exiting...")
+            pass
+        f.write(console.export_text())
     sys.exit(0)
